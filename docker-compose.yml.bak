@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # 🧠 N8N Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-app
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=n8n
+    volumes:
+      - ./n8n-local-files:/home/node/.n8n
+    depends_on:
+      - postgres
+    networks:
+      - ai-network
+
+  # 🐘 PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: postgres-db
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=n8n
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-network
+
+  # 🦙 Ollama LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai-network
+
+  # 💬 Open WebUI
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    networks:
+      - ai-network
+
+  # 🕸️ Browser Automation Service
+  browser-use:
+    build:
+      context: ./browser-n8n-local
+      dockerfile: Dockerfile
+    container_name: browser-automation
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./browser-n8n-local:/app
+      - ./data:/data
+    environment:
+      - N8N_API_URL=http://n8n:5678
+      - OLLAMA_URL=http://ollama:11434
+    depends_on:
+      - n8n
+      - ollama
+    networks:
+      - ai-network
+
+  # 🔌 MCPO Proxy Service
+  mcpo:
+    build:
+      context: ./mcpo
+      dockerfile: Dockerfile
+    container_name: mcpo-proxy
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./mcpo:/app
+    networks:
+      - ai-network
+
+volumes:
+  postgres_data:
+  ollama_data:
+
+networks:
+  ai-network:
+    driver: bridge

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Status Monitor (CLI-like)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 768px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        button {
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        button:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .btn-primary {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            background-color: #2563eb;
+        }
+        .btn-danger {
+            background-color: #ef4444;
+            color: #ffffff;
+        }
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        .log-area {
+            background-color: #1f2937;
+            color: #e5e7eb;
+            padding: 16px;
+            border-radius: 8px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .log-message {
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        .log-info { color: #9ca3af; }
+        .log-success { color: #34d399; }
+        .log-warn { color: #fbbf24; }
+        .log-error { color: #f87171; }
+        .flex-grow {
+            flex-grow: 1;
+        }
+        @media (max-width: 640px) {
+            .flex-col-sm {
+                flex-direction: column;
+            }
+            .flex-col-sm > * {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-900 text-center">Website Status Monitor</h1>
+
+        <div class="space-y-4">
+            <div>
+                <label for="monitorUrl" class="block text-sm font-medium text-gray-700 mb-1">URL to Monitor:</label>
+                <input type="text" id="monitorUrl" placeholder="e.g., https://status.render.com/" class="focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+                <label for="n8nWebhookUrl" class="block text-sm font-medium text-gray-700 mb-1">n8n Webhook URL:</label>
+                <input type="text" id="n8nWebhookUrl" placeholder="e.g., https://your-n8n-instance/webhook/..." class="focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+                <label for="interval" class="block text-sm font-medium text-gray-700 mb-1">Check Interval (seconds):</label>
+                <input type="number" id="interval" value="60" min="10" class="focus:ring-blue-500 focus:border-blue-500">
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4">
+            <button id="startButton" class="btn-primary flex-grow">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                </svg>
+                Start Monitoring
+            </button>
+            <button id="stopButton" class="btn-danger flex-grow" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 00-.707 1.707L10.586 14l-2.293 2.293A1 1 0 009 18h2a1 1 0 00.707-.293L14 14.586l2.293 2.293A1 1 0 0018 17V7a1 1 0 00-1.707-.707L14 9.414l-2.293-2.293A1 1 0 0010 6H8a1 1 0 00-1 1z" clip-rule="evenodd" />
+                </svg>
+                Stop Monitoring
+            </button>
+        </div>
+
+        <div>
+            <h2 class="text-xl font-semibold text-gray-900 mb-2">Activity Log:</h2>
+            <div id="logArea" class="log-area"></div>
+        </div>
+
+        <p class="text-sm text-gray-600 text-center">
+            <span class="font-bold text-red-500">Important:</span> This tool runs in your browser. For continuous monitoring, consider deploying this logic to a server or serverless function. CORS policies may prevent direct fetching of some URLs.
+        </p>
+    </div>
+
+    <script>
+        const monitorUrlInput = document.getElementById('monitorUrl');
+        const n8nWebhookUrlInput = document.getElementById('n8nWebhookUrl');
+        const intervalInput = document.getElementById('interval');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const logArea = document.getElementById('logArea');
+
+        let monitoringIntervalId = null;
+        let lastStatus = null;
+        let lastTextContent = null; // Store last text content for basic change detection
+
+        // --- Utility Functions ---
+
+        /**
+         * Logs a message to the UI log area with a timestamp and specific styling.
+         * @param {string} message - The message to log.
+         * @param {'info' | 'success' | 'warn' | 'error'} type - The type of log message for styling.
+         */
+        function logMessage(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.classList.add('log-message', `log-${type}`);
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logArea.prepend(logEntry); // Add to top
+            // Keep log area from growing indefinitely
+            if (logArea.children.length > 100) {
+                logArea.removeChild(logArea.lastChild);
+            }
+        }
+
+        /**
+         * Saves the current input values to localStorage.
+         */
+        function saveConfig() {
+            localStorage.setItem('monitorUrl', monitorUrlInput.value);
+            localStorage.setItem('n8nWebhookUrl', n8nWebhookUrlInput.value);
+            localStorage.setItem('interval', intervalInput.value);
+            logMessage('Configuration saved.', 'info');
+        }
+
+        /**
+         * Loads saved input values from localStorage.
+         */
+        function loadConfig() {
+            monitorUrlInput.value = localStorage.getItem('monitorUrl') || '';
+            n8nWebhookUrlInput.value = localStorage.getItem('n8nWebhookUrl') || '';
+            intervalInput.value = localStorage.getItem('interval') || '60';
+            logMessage('Configuration loaded.', 'info');
+        }
+
+        /**
+         * Sends a webhook to the n8n URL with the detected status change.
+         * @param {number} newStatus - The new HTTP status code.
+         * @param {string} statusText - The status text (e.g., 'OK', 'Not Found').
+         * @param {string} contentPreview - A preview of the response content.
+         */
+        async function sendWebhook(newStatus, statusText, contentPreview) {
+            const webhookUrl = n8nWebhookUrlInput.value;
+            if (!webhookUrl) {
+                logMessage('n8n Webhook URL is not set. Cannot send webhook.', 'warn');
+                return;
+            }
+
+            const payload = {
+                timestamp: new Date().toISOString(),
+                monitoredUrl: monitorUrlInput.value,
+                newStatus: newStatus,
+                statusText: statusText,
+                previousStatus: lastStatus,
+                contentPreview: contentPreview.substring(0, 500) + (contentPreview.length > 500 ? '...' : ''), // Limit content preview
+                message: `Status of ${monitorUrlInput.value} changed from ${lastStatus || 'N/A'} to ${newStatus} (${statusText}).`
+            };
+
+            logMessage(`Sending webhook to n8n with new status: ${newStatus}...`, 'info');
+            try {
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (response.ok) {
+                    logMessage(`Webhook sent successfully to n8n! Response status: ${response.status}`, 'success');
+                } else {
+                    const errorText = await response.text();
+                    logMessage(`Failed to send webhook to n8n. Status: ${response.status}, Response: ${errorText}`, 'error');
+                }
+            } catch (error) {
+                logMessage(`Error sending webhook to n8n: ${error.message}. Check your n8n URL and network.`, 'error');
+            }
+        }
+
+        /**
+         * Checks the status of the monitored URL.
+         */
+        async function checkStatus() {
+            const url = monitorUrlInput.value;
+            if (!url) {
+                logMessage('URL to Monitor is empty. Please enter a URL.', 'warn');
+                stopMonitoring();
+                return;
+            }
+
+            logMessage(`Checking status of ${url}...`, 'info');
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    cache: 'no-store', // Prevent caching of responses
+                    mode: 'no-cors' // Use no-cors to avoid CORS errors for basic status checks, but this means you can't read response content or status code directly if it's not same-origin.
+                                    // For full response details (status code, body), the target server MUST send CORS headers.
+                });
+
+                // If mode is 'no-cors', response.status will be 0 and response.type will be 'opaque'.
+                // We can't reliably get the actual status code or content.
+                // This is a limitation of client-side fetching for cross-origin resources.
+                // For a robust solution, a server-side proxy or execution is required.
+                const currentStatus = response.status;
+                const statusText = response.statusText || (currentStatus === 0 ? 'Opaque Response (CORS/Network Issue)' : 'OK/Unknown');
+                let currentTextContent = '';
+
+                // Try to read content if not opaque and not a network error
+                if (response.type !== 'opaque' && response.ok) {
+                    try {
+                        currentTextContent = await response.text();
+                    } catch (e) {
+                        logMessage(`Could not read response text: ${e.message}`, 'warn');
+                    }
+                }
+
+                // Check for status change
+                if (lastStatus === null) {
+                    logMessage(`Initial status for ${url}: ${currentStatus} (${statusText})`, 'info');
+                    lastStatus = currentStatus;
+                    lastTextContent = currentTextContent;
+                } else if (currentStatus !== lastStatus) {
+                    logMessage(`Status change detected for ${url}: ${lastStatus} -> ${currentStatus} (${statusText})`, 'success');
+                    await sendWebhook(currentStatus, statusText, currentTextContent);
+                    lastStatus = currentStatus;
+                    lastTextContent = currentTextContent;
+                } else if (currentTextContent !== lastTextContent) {
+                    // Basic content change detection (only if status is the same)
+                    logMessage(`Content change detected for ${url}. Status ${currentStatus} unchanged.`, 'success');
+                    await sendWebhook(currentStatus, statusText, currentTextContent);
+                    lastTextContent = currentTextContent;
+                } else {
+                    logMessage(`Status and content for ${url} are unchanged: ${currentStatus}`, 'info');
+                }
+
+            } catch (error) {
+                // This catch block handles network errors (e.g., DNS resolution failed, no internet)
+                // It does NOT catch HTTP errors like 404, 500 if the server responds.
+                // For 'no-cors' mode, it also won't catch errors that result in an opaque response.
+                logMessage(`Error fetching ${url}: ${error.message}. This might be a network issue or CORS restriction.`, 'error');
+                // If a network error occurs, we might consider this a "down" state change
+                if (lastStatus !== 'ERROR') {
+                    logMessage(`Status change detected for ${url}: ${lastStatus || 'N/A'} -> ERROR`, 'error');
+                    await sendWebhook('ERROR', error.message, `Network/Fetch Error: ${error.message}`);
+                    lastStatus = 'ERROR';
+                    lastTextContent = ''; // Clear content on error
+                }
+            }
+        }
+
+        /**
+         * Starts the monitoring process.
+         */
+        async function startMonitoring() {
+            const url = monitorUrlInput.value;
+            const webhookUrl = n8nWebhookUrlInput.value;
+            const intervalSeconds = parseInt(intervalInput.value);
+
+            if (!url || !webhookUrl || isNaN(intervalSeconds) || intervalSeconds < 10) {
+                logMessage('Please fill in all valid fields (URL, Webhook URL, Interval >= 10 seconds).', 'error');
+                return;
+            }
+
+            // Save config before starting
+            saveConfig();
+
+            // Disable inputs and start button, enable stop button
+            monitorUrlInput.disabled = true;
+            n8nWebhookUrlInput.disabled = true;
+            intervalInput.disabled = true;
+            startButton.disabled = true;
+            stopButton.disabled = false;
+
+            logMessage(`Starting monitoring of ${url} every ${intervalSeconds} seconds...`, 'info');
+
+            // Perform an immediate check
+            await checkStatus();
+
+            // Set up the interval
+            monitoringIntervalId = setInterval(checkStatus, intervalSeconds * 1000);
+        }
+
+        /**
+         * Stops the monitoring process.
+         */
+        function stopMonitoring() {
+            if (monitoringIntervalId) {
+                clearInterval(monitoringIntervalId);
+                monitoringIntervalId = null;
+                logMessage('Monitoring stopped.', 'info');
+            }
+
+            // Enable inputs and start button, disable stop button
+            monitorUrlInput.disabled = false;
+            n8nWebhookUrlInput.disabled = false;
+            intervalInput.disabled = false;
+            startButton.disabled = false;
+            stopButton.disabled = true;
+
+            lastStatus = null; // Reset last status
+            lastTextContent = null; // Reset last content
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startMonitoring);
+        stopButton.addEventListener('click', stopMonitoring);
+
+        // Save config on input change
+        monitorUrlInput.addEventListener('change', saveConfig);
+        n8nWebhookUrlInput.addEventListener('change', saveConfig);
+        intervalInput.addEventListener('change', saveConfig);
+
+        // Load configuration when the page loads
+        window.onload = loadConfig;
+    </script>
+</body>
+</html>

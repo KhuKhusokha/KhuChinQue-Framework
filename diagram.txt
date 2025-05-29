@@ -1,0 +1,10 @@
+graph LR
+  Browser-->|API Calls|N8N
+  Browser-->|LLM Requests|Ollama
+  OpenWebUI-->|LLM Proxy|Ollama
+  N8N-->|Database|Postgres
+  MCPO-->|Auth Proxy|AllServices
+
+
+
+

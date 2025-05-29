@@ -1,0 +1,73 @@
+# Multi-stage build for browser-n8n-local
+FROM python:3.11-slim as base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates \
+    apt-transport-https \
+    software-properties-common \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (for n8n)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Install Chrome/Chromium for browser automation
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+COPY browser-use/requirements.txt ./browser-use-requirements.txt
+COPY web-ui/requirements.txt ./web-ui-requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r browser-use-requirements.txt \
+    && pip install --no-cache-dir -r web-ui-requirements.txt
+
+# Install n8n globally
+RUN npm install -g n8n
+
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/data /app/logs /app/.n8n
+
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Set environment variables
+ENV DISPLAY=:99
+ENV CHROME_BIN=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV N8N_USER_FOLDER=/app/.n8n
+ENV N8N_BASIC_AUTH_ACTIVE=false
+ENV N8N_HOST=0.0.0.0
+ENV N8N_PORT=5678
+ENV OLLAMA_HOST=http://ollama:11434
+
+# Expose ports
+EXPOSE 5678 8080 3000 8501
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Start Xvfb for headless browser\n\
+Xvfb :99 -screen 0 1024x768x24 -ac +extension GLX +render -noreset &\n\
+\n\
+# Start supervisor to manage all services\n\
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]
